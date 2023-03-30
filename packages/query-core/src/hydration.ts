@@ -2,8 +2,10 @@ import type { QueryClient } from './queryClient'
 import type { Query, QueryState } from './query'
 import type {
   MutationKey,
+  MutationMeta,
   MutationOptions,
   QueryKey,
+  QueryMeta,
   QueryOptions,
 } from './types'
 import type { Mutation, MutationState } from './mutation'
@@ -27,12 +29,14 @@ export interface HydrateOptions {
 interface DehydratedMutation {
   mutationKey?: MutationKey
   state: MutationState
+  meta: MutationMeta | undefined
 }
 
 interface DehydratedQuery {
   queryHash: string
   queryKey: QueryKey
   state: QueryState
+  meta: QueryMeta | undefined
 }
 
 export interface DehydratedState {
@@ -50,6 +54,7 @@ function dehydrateMutation(mutation: Mutation): DehydratedMutation {
   return {
     mutationKey: mutation.options.mutationKey,
     state: mutation.state,
+    meta: mutation.meta,
   }
 }
 
@@ -62,6 +67,7 @@ function dehydrateQuery(query: Query): DehydratedQuery {
     state: query.state,
     queryKey: query.queryKey,
     queryHash: query.queryHash,
+    meta: query.meta,
   }
 }
 
@@ -134,6 +140,7 @@ export function hydrate(
       {
         ...options?.defaultOptions?.mutations,
         mutationKey: dehydratedMutation.mutationKey,
+        meta: dehydratedMutation.meta ?? options?.defaultOptions?.mutations?.meta
       },
       dehydratedMutation.state,
     )
@@ -162,6 +169,7 @@ export function hydrate(
       client,
       {
         ...options?.defaultOptions?.queries,
+        meta: dehydratedQuery.meta ?? options?.defaultOptions?.queries?.meta,
         queryKey: dehydratedQuery.queryKey,
         queryHash: dehydratedQuery.queryHash,
       },

@@ -466,4 +466,93 @@ describe('dehydration and rehydration', () => {
     hydrate(hydrationClient, parsed)
     expect(hydrationCache.find(['string'])?.state.fetchStatus).toBe('idle')
   })
+
+  test('should hydrate query meta', async () => {
+    const queryCache = new QueryCache()
+    const queryClient = createQueryClient({ queryCache })
+    await queryClient.prefetchQuery(['string'], () => fetchData('string'), { meta: { stored: true }})
+    const dehydrated = dehydrate(queryClient)
+    const stringified = JSON.stringify(dehydrated)
+    const parsed = JSON.parse(stringified)
+    const hydrationCache = new QueryCache()
+    const hydrationClient = createQueryClient({ queryCache: hydrationCache })
+    hydrate(hydrationClient, parsed)
+    expect(hydrationCache.find(['string'])?.meta).toEqual({ stored: true })
+    queryClient.clear()
+    hydrationClient.clear()
+  })
+
+  test('should hydrate mutation meta', async () => {
+    const consoleMock = jest.spyOn(console, 'error')
+    consoleMock.mockImplementation(() => undefined)
+    const onlineMock = mockNavigatorOnLine(false)
+
+    const serverAddTodo = jest
+      .fn()
+      .mockImplementation(() => Promise.reject('offline'))
+    const serverOnMutate = jest.fn().mockImplementation((variables) => {
+      const optimisticTodo = { id: 1, text: variables.text }
+      return { optimisticTodo }
+    })
+    const serverOnSuccess = jest.fn()
+
+    const serverClient = createQueryClient()
+
+    serverClient.setMutationDefaults(['addTodo'], {
+      mutationFn: serverAddTodo,
+      onMutate: serverOnMutate,
+      onSuccess: serverOnSuccess,
+      retry: 3,
+      retryDelay: 10,
+    })
+
+    executeMutation(serverClient, {
+      mutationKey: ['addTodo'],
+      variables: { text: 'text' },
+      meta: {
+        stored: true
+      }
+    }).catch(() => undefined)
+
+    await sleep(50)
+
+    const dehydrated = dehydrate(serverClient)
+    const stringified = JSON.stringify(dehydrated)
+
+    serverClient.clear()
+
+    // ---
+
+    onlineMock.mockReturnValue(true)
+
+    const parsed = JSON.parse(stringified)
+    const client = createQueryClient()
+
+    const clientAddTodo = jest.fn().mockImplementation((variables) => {
+      return { id: 2, text: variables.text }
+    })
+    const clientOnMutate = jest.fn().mockImplementation((variables) => {
+      const optimisticTodo = { id: 1, text: variables.text }
+      return { optimisticTodo }
+    })
+    const clientOnSuccess = jest.fn()
+
+    client.setMutationDefaults(['addTodo'], {
+      mutationFn: clientAddTodo,
+      onMutate: clientOnMutate,
+      onSuccess: clientOnSuccess,
+      retry: 3,
+      retryDelay: 10,
+    })
+
+    hydrate(client, parsed)
+
+    await client.resumePausedMutations()
+
+    expect(client.getMutationCache().find({ mutationKey: ['addTodo'] })?.meta).toEqual({ stored: true })
+
+    client.clear()
+    consoleMock.mockRestore()
+    onlineMock.mockRestore()
+  })
 })
